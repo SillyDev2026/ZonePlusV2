@@ -2,7 +2,7 @@
 --!optimize 2
 
 --[[
-    ZonePlusNext v1.2.1
+    ZonePlusNext v1.2.2
     A dependency-free zone system for Roblox.
 
     Goals:
@@ -32,7 +32,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local VERSION = "1.2.1"
+local VERSION = "1.2.2"
 local DEFAULT_INTERVAL = 0.10
 local MIN_INTERVAL = 1 / 240
 local EPSILON = 1e-6
@@ -993,6 +993,15 @@ local function rayAABB(origin: Vector3, direction: Vector3, minimum: Vector3, ma
 	if not axis(origin.Z, direction.Z, minimum.Z, maximum.Z) then return nil end
 
 	return tmin
+end
+
+-- Segment intersection against a part's oriented bounds, expressed in local space.
+-- Unlike a world AABB, this avoids false positives near rotated thin zones.
+local function rayOrientedBox(origin: Vector3, direction: Vector3, cframe: CFrame, size: Vector3): number?
+    local localOrigin = cframe:PointToObjectSpace(origin)
+    local localDirection = cframe:VectorToObjectSpace(direction)
+    local half = size * 0.5
+    return rayAABB(localOrigin, localDirection, -half, half)
 end
 
 local function appendBounded<T>(array: {T}, value: T, limit: number)
@@ -2939,9 +2948,10 @@ function ZonePlusNext:_refreshParts()
 	local refreshed = {}
 
 	for _, part in ipairs(collected) do
-		if not self._invalidParts[part] then
-			table.insert(refreshed, part)
-		end
+		-- A removed part may be reparented into the container. The old
+		-- invalidation mark must not permanently exclude a live part.
+		self._invalidParts[part] = nil
+		table.insert(refreshed, part)
 	end
 
 	self._parts = refreshed
@@ -4940,9 +4950,20 @@ function ZonePlusNext.QueryRay(origin: Vector3, direction: Vector3, options: Zon
 		if not zoneMatchesCriteria(zone, options) then continue end
 		local minimum, maximum = getZoneBounds(zone)
 		if minimum == nil or maximum == nil then continue end
-		local t = rayAABB(origin, direction, minimum, maximum)
-		if t ~= nil then
-			table.insert(hits, {Zone = zone, T = t})
+		-- The index uses broad world bounds. Narrow-phase testing must
+		-- use each part's orientation (including per-zone padding).
+		local nearestT: number? = nil
+		for _, part in ipairs(zone._parts) do
+			if not zone:_isPartActive(part) then continue end
+			local size = part.Size + zone.Padding * 2
+			if size.X <= 0 or size.Y <= 0 or size.Z <= 0 then continue end
+			local t = rayOrientedBox(origin, direction, part.CFrame, size)
+			if t ~= nil and (nearestT == nil or t < nearestT) then
+				nearestT = t
+			end
+		end
+		if nearestT ~= nil then
+			table.insert(hits, {Zone = zone, T = nearestT})
 		end
 	end
 	table.sort(hits, function(a, b) return a.T < b.T end)
