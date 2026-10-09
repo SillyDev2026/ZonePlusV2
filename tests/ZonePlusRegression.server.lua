@@ -17,7 +17,7 @@ local zone = ZonePlus.new(rotated, {TrackPlayers = false})
 
 -- This small segment lies inside the world-aligned bounding box but well
 -- outside the actual rotated thin part. AABB-only ray hits were false positives.
-local missOrigin = Vector3.new(-6, 0, 6)
+local missOrigin = Vector3.new(-6, 0, -6)
 local missVector = Vector3.new(0.5, 0, 0)
 for _, hit in ipairs(ZonePlus.QueryRay(missOrigin, missVector)) do
     assert(hit ~= zone, "Rotated part: false-positive ray hit")
