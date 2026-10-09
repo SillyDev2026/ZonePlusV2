@@ -1,6 +1,6 @@
 # ZonePlusNext
 
-**ZonePlusNext v1.2.1** is a dependency-free, high-performance zone and spatial-query system for Roblox.
+**ZonePlusNext v1.2.2** is a dependency-free, high-performance zone and spatial-query system for Roblox.
 
 It goes beyond basic `Touched`-based zone detection by providing a shared scheduler, player and zone spatial indexes, multiple detection modes, transition history, predictive queries, arbitrary tracked objects, tags, priorities, capacities, visibility queries, statistics, and a fluent query engine.
 
@@ -8,8 +8,19 @@ It goes beyond basic `Touched`-based zone detection by providing a shared schedu
 local ZonePlusNext = require(path.to.ZonePlusNext)
 
 print(ZonePlusNext.Version())
--- 1.2.1
+-- 1.2.2
 ```
+
+---
+
+## v1.2.2 correctness patch
+
+- Ray/path queries now perform per-part **oriented-bounds** segment intersections, rather than returning zones based only on the broad world-aligned bounding box. For curved MeshParts/Balls/Cylinders this remains a *bounds* approximation, not triangle-accurate geometry.
+- Parts removed from and later reparented into a zone container are eligible for detection again after the next container refresh.
+- Public constructors, events, and method signatures are unchanged. QueryRay/QueryPath can return fewer (more accurate) results near rotated bounds.
+- New Studio regression script in `tests/ZonePlusRegression.server.lua` checks both cases.
+
+**Validation:** These source-level fixes need a Roblox Studio Play test; no faster runtime or strict-typecheck pass is claimed without running the engine. Measure scheduler and query workloads with the existing statistics APIs before/after deployment.
 
 ---
 
@@ -2228,7 +2239,7 @@ ZonePlusNext.PrintStats()
 Example format:
 
 ```text
-[ZonePlusNext v1.2.1] zones=...
+[ZonePlusNext v1.2.2] zones=...
 ```
 
 ---
@@ -2745,7 +2756,7 @@ ZonePlusNext.DestroyZones(options?)
 # Version
 
 ```text
-ZonePlusNext v1.2.1
+ZonePlusNext v1.2.2
 ```
 
 Check at runtime:
