@@ -31,6 +31,43 @@ for _, hit in ipairs(ZonePlus.QueryRay(hitOrigin, hitVector)) do
 end
 assert(sawHit, "Expected real ray hit")
 
+-- A ray crossing a ball/cylinder bounding box corner is not a shape hit.
+local ball = Instance.new("Part")
+ball.Shape = Enum.PartType.Ball
+ball.Size = Vector3.new(8, 8, 8)
+ball.Anchored = true
+ball.CFrame = CFrame.new(0, 0, 40)
+ball.Parent = Workspace
+local ballZone = ZonePlus.new(ball, {TrackPlayers = false})
+for _, candidate in ipairs(ZonePlus.QueryRay(Vector3.new(3.5, 3.5, 30), Vector3.new(0, 0, 20))) do
+    assert(candidate ~= ballZone, "Sphere bounding-box corner caused a false hit")
+end
+local ballFound = false
+for _, candidate in ipairs(ZonePlus.QueryRay(Vector3.new(0, 0, 30), Vector3.new(0, 0, 20))) do
+    if candidate == ballZone then ballFound = true end
+end
+assert(ballFound, "Centered ray should hit the spherical zone")
+ballZone:Destroy()
+ball:Destroy()
+
+local cylinder = Instance.new("Part")
+cylinder.Shape = Enum.PartType.Cylinder
+cylinder.Size = Vector3.new(8, 8, 8)
+cylinder.Anchored = true
+cylinder.CFrame = CFrame.new(0, 0, 70)
+cylinder.Parent = Workspace
+local cylinderZone = ZonePlus.new(cylinder, {TrackPlayers = false})
+for _, candidate in ipairs(ZonePlus.QueryRay(Vector3.new(-10, 3.5, 73.5), Vector3.new(20, 0, 0))) do
+    assert(candidate ~= cylinderZone, "Cylinder bounding-box corner caused a false hit")
+end
+local cylinderFound = false
+for _, candidate in ipairs(ZonePlus.QueryRay(Vector3.new(-10, 0, 70), Vector3.new(20, 0, 0))) do
+    if candidate == cylinderZone then cylinderFound = true end
+end
+assert(cylinderFound, "Centered ray should hit the cylindrical zone")
+cylinderZone:Destroy()
+cylinder:Destroy()
+
 -- Moving a part out and back into a Folder zone must restore it.
 zone:Destroy()
 local folderZone = ZonePlus.new(folder, {TrackPlayers = false, Priority = 100})
