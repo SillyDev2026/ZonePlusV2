@@ -33,7 +33,7 @@ assert(sawHit, "Expected real ray hit")
 
 -- Moving a part out and back into a Folder zone must restore it.
 zone:Destroy()
-local folderZone = ZonePlus.new(folder, {TrackPlayers = false})
+local folderZone = ZonePlus.new(folder, {TrackPlayers = false, Priority = 100})
 local middle = rotated.Position
 assert(folderZone:ContainsPoint(middle), "Initial point not contained")
 rotated.Parent = nil
@@ -44,6 +44,20 @@ rotated.Parent = folder
 task.wait()
 folderZone:Refresh()
 assert(folderZone:ContainsPoint(middle), "Reparented part never recovered")
+
+-- A limited nearby query must not spend its only slot on this zone.
+local neighborPart = Instance.new("Part")
+neighborPart.Anchored = true
+neighborPart.Size = Vector3.new(2, 2, 2)
+neighborPart.CFrame = CFrame.new(middle)
+neighborPart.Parent = Workspace
+local neighborZone = ZonePlus.new(neighborPart, {TrackPlayers = false, Priority = 0})
+local limited = folderZone:GetNearbyZones(1, {Limit = 1})
+assert(#limited == 1 and limited[1] == neighborZone, "Nearby zone lost when self consumes Limit")
+local unlimited = folderZone:GetNearbyZones(1)
+assert(#unlimited == 1 and unlimited[1] == neighborZone, "Nearby result must exclude self")
+neighborZone:Destroy()
+neighborPart:Destroy()
 
 folderZone:Destroy()
 folder:Destroy()
