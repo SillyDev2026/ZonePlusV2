@@ -5026,12 +5026,24 @@ function ZonePlusNext:GetNearbyZones(radius: number, options: ZoneQueryOptions?)
 		return {}
 	end
 
-	local result = ZonePlusNext.QueryRadius(boundsCF.Position, radius, options)
+	-- QueryRadius applies Limit before this method removes self.
+	-- Request one extra result so self does not consume a neighbor slot.
+	local limit = getManagementLimit(options)
+	if limit == 0 then return {} end
+	local queryOptions = options
+	if limit ~= nil then
+		queryOptions = table.clone(options :: ZoneQueryOptions)
+		queryOptions.Limit = limit + 1
+	end
+	local result = ZonePlusNext.QueryRadius(boundsCF.Position, radius, queryOptions)
 
 	for index = #result, 1, -1 do
 		if result[index] == self then
 			table.remove(result, index)
 		end
+	end
+	if limit ~= nil then
+		while #result > limit do table.remove(result) end
 	end
 
 	return result
