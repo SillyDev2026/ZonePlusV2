@@ -1004,6 +1004,60 @@ local function rayOrientedBox(origin: Vector3, direction: Vector3, cframe: CFram
     return rayAABB(localOrigin, localDirection, -half, half)
 end
 
+-- Return the first [0, 1] segment parameter inside an oriented ellipsoid.
+-- The shape uses the same per-axis padding as pointInsideBall.
+local function rayEllipsoid(origin: Vector3, direction: Vector3, cframe: CFrame, size: Vector3): number?
+    local half = size * 0.5
+    if half.X <= 0 or half.Y <= 0 or half.Z <= 0 then return nil end
+    local o = cframe:PointToObjectSpace(origin)
+    local d = cframe:VectorToObjectSpace(direction)
+    local ox, oy, oz = o.X / half.X, o.Y / half.Y, o.Z / half.Z
+    local dx, dy, dz = d.X / half.X, d.Y / half.Y, d.Z / half.Z
+    local c = ox * ox + oy * oy + oz * oz - 1
+    if c <= 0 then return 0 end
+    local a = dx * dx + dy * dy + dz * dz
+    if a == 0 then return nil end
+    local b = 2 * (ox * dx + oy * dy + oz * dz)
+    local discriminant = b * b - 4 * a * c
+    if discriminant < 0 then return nil end
+    local t = (-b - math.sqrt(discriminant)) / (2 * a)
+    if t >= 0 and t <= 1 then return t end
+    return nil
+end
+
+-- Cylinder's length is along the local X axis; Y/Z form an ellipse.
+local function rayOrientedCylinder(origin: Vector3, direction: Vector3, cframe: CFrame, size: Vector3): number?
+    local half = size * 0.5
+    if half.X <= 0 or half.Y <= 0 or half.Z <= 0 then return nil end
+    local o = cframe:PointToObjectSpace(origin)
+    local d = cframe:VectorToObjectSpace(direction)
+    local first, last = 0, 1
+    if d.X == 0 then
+        if math.abs(o.X) > half.X then return nil end
+    else
+        local t1 = (-half.X - o.X) / d.X
+        local t2 = (half.X - o.X) / d.X
+        if t1 > t2 then t1, t2 = t2, t1 end
+        first = math.max(first, t1)
+        last = math.min(last, t2)
+        if first > last then return nil end
+    end
+    local oy, oz = o.Y / half.Y, o.Z / half.Z
+    local dy, dz = d.Y / half.Y, d.Z / half.Z
+    local a = dy * dy + dz * dz
+    local c = oy * oy + oz * oz - 1
+    if a == 0 then return if c <= 0 then first else nil end
+    local b = 2 * (oy * dy + oz * dz)
+    local discriminant = b * b - 4 * a * c
+    if discriminant < 0 then return nil end
+    local root = math.sqrt(discriminant)
+    local t1 = (-b - root) / (2 * a)
+    local t2 = (-b + root) / (2 * a)
+    first = math.max(first, t1)
+    last = math.min(last, t2)
+    return if first <= last then first else nil
+end
+
 local function appendBounded<T>(array: {T}, value: T, limit: number)
 	table.insert(array, value)
 	local overflow = #array - limit
@@ -4957,7 +5011,14 @@ function ZonePlusNext.QueryRay(origin: Vector3, direction: Vector3, options: Zon
 			if not zone:_isPartActive(part) then continue end
 			local size = part.Size + zone.Padding * 2
 			if size.X <= 0 or size.Y <= 0 or size.Z <= 0 then continue end
-			local t = rayOrientedBox(origin, direction, part.CFrame, size)
+			local t: number?
+			if part:IsA("Part") and part.Shape == Enum.PartType.Ball then
+				t = rayEllipsoid(origin, direction, part.CFrame, size)
+			elseif part:IsA("Part") and part.Shape == Enum.PartType.Cylinder then
+				t = rayOrientedCylinder(origin, direction, part.CFrame, size)
+			else
+				t = rayOrientedBox(origin, direction, part.CFrame, size)
+			end
 			if t ~= nil and (nearestT == nil or t < nearestT) then
 				nearestT = t
 			end
@@ -5026,12 +5087,24 @@ function ZonePlusNext:GetNearbyZones(radius: number, options: ZoneQueryOptions?)
 		return {}
 	end
 
-	local result = ZonePlusNext.QueryRadius(boundsCF.Position, radius, options)
+	-- QueryRadius applies Limit before this method removes self.
+	-- Request one extra result so self does not consume a neighbor slot.
+	local limit = getManagementLimit(options)
+	if limit == 0 then return {} end
+	local queryOptions = options
+	if limit ~= nil then
+		queryOptions = table.clone(options :: ZoneQueryOptions)
+		queryOptions.Limit = limit + 1
+	end
+	local result = ZonePlusNext.QueryRadius(boundsCF.Position, radius, queryOptions)
 
 	for index = #result, 1, -1 do
 		if result[index] == self then
 			table.remove(result, index)
 		end
+	end
+	if limit ~= nil then
+		while #result > limit do table.remove(result) end
 	end
 
 	return result
